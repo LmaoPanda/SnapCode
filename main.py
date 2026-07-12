@@ -40,6 +40,7 @@ COLORS = {
 
 shared_action = multiprocessing.Value('i', 0)
 
+#icl this is so buns
 def setup_gpio():
     print("[DEBUG] Initializing GPIO configurations...")
     GPIO.setmode(GPIO.BCM)
@@ -68,6 +69,7 @@ def move_stepper(steps, direction, current_phase_list):
     print(f"[DEBUG] [MOTOR] Finished moving {steps} steps.")
 
 def home_stepper(current_phase_list):
+    #debug statements hard carry
     print("[DEBUG] [HOMING] Starting homing sequence...")
     step_count = 0
     while GPIO.input(PIN_LIMIT_SWITCH) == GPIO.HIGH: 
@@ -85,6 +87,7 @@ def read_color(camera):
         return 0
     
     h, w, _ = frame.shape
+    #straight from online tutorial
     roi = frame[h//2-20:h//2+20, w//2-20:w//2+20]
     
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -119,7 +122,7 @@ def scanner_loop_process(action_variable):
             
             home_stepper(step_phase_tracker)
             
-            loop_stack = [] 
+            loop_stack = [] # cs reference???
             current_index = 0
             print(f"[DEBUG] [ROUTINE] Main execution loop started. Target blocks: {TOTAL_INSTRUCTIONS}")
             
