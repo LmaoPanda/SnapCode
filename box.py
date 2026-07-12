@@ -1,27 +1,25 @@
 from flask import Flask, jsonify
 import RPi.GPIO as GPIO
 import time
-import multiprocessing  # Used for true multi-core processing
+import multiprocessing
 import cv2
 import numpy as np
 
 app = Flask(__name__)
 
 # ==========================================
-# CONFIGURATION
+# CONFIG
 # ==========================================
-# Pinouts (BCM mode) for 4-wire Half-Bridge Driver
+
 PINS_STEPPER = [26, 19, 13, 6]  
 PIN_BUTTON = 16
 PIN_LIMIT_SWITCH = 2
 
-# Stepper / Scanner Config
-STEPS_PER_BLOCK = 200      
+STEPS_PER_BLOCK = 47      
 STEP_DELAY = 0.005         
 ACTION_DURATION = 1.0      
-TOTAL_INSTRUCTIONS = 9     
+TOTAL_INSTRUCTIONS = 10   
 
-# Full-step sequence
 STEP_SEQUENCE = [
     [1, 0, 0, 1],  
     [1, 1, 0, 0],  
@@ -29,7 +27,6 @@ STEP_SEQUENCE = [
     [0, 0, 1, 1]   
 ]
 
-# Color mappings
 COLORS = {
     1: {"lower": (0, 100, 100),   "upper": (10, 255, 255)},   # Red
     2: {"lower": (110, 100, 100), "upper": (130, 255, 255)},  # Blue
@@ -41,9 +38,7 @@ COLORS = {
     8: {"lower": (0, 0, 200),     "upper": (180, 30, 255)}    # White
 }
 
-# Shared state between multi-core Process and Flask (Process-Safe Integer)
 shared_action = multiprocessing.Value('i', 0)
-# ==========================================
 
 def setup_gpio():
     print("[DEBUG] Initializing GPIO configurations...")
@@ -59,7 +54,6 @@ def setup_gpio():
     print(f"[DEBUG] Stepper Output Pins Configured: {PINS_STEPPER}")
 
 def move_stepper(steps, direction, current_phase_list):
-    """ Moves the stepper and tracks phase across calls via a mutable list """
     dir_str = "FORWARD" if direction == 1 else "BACKWARD"
     print(f"[DEBUG] [MOTOR] Moving {steps} steps {dir_str}...")
     
@@ -108,22 +102,20 @@ def read_color(camera):
     return 0
 
 def scanner_loop_process(action_variable):
-    """ Runs on a dedicated CPU core to keep hardware timings precise """
     print("[DEBUG] [CORE-2] Hardware Scanner Process Started on separate core.")
-    setup_gpio() # Setup GPIO locally within the process scope
+    setup_gpio()
     
     print("[DEBUG] [CORE-2] Initializing Camera Interface...")
     camera = cv2.VideoCapture(0)
     if not camera.isOpened():
         print("[DEBUG] [CORE-2] [CRITICAL] Camera failed to open!")
     
-    # Local step phase tracking wrapper
     step_phase_tracker = [0]
 
     while True:
         if GPIO.input(PIN_BUTTON) == GPIO.LOW:
             print("[DEBUG] [INPUT] Physical Button Press Detected! Launching routine...")
-            time.sleep(0.5) # Debounce
+            time.sleep(0.5)
             
             home_stepper(step_phase_tracker)
             
@@ -148,7 +140,7 @@ def scanner_loop_process(action_variable):
                     time.sleep(ACTION_DURATION) 
                     
                     with action_variable.get_lock():
-                        if action_variable.value == code: # Only clear if Flask didn't pick it up yet
+                        if action_variable.value == code:
                             action_variable.value = 0
                             print("[DEBUG] [ACTION] Action cleared back to 0 automatically.")
                     
@@ -192,10 +184,8 @@ def scanner_loop_process(action_variable):
                 
         time.sleep(0.1)
 
-# FLASK ENDPOINTS (Runs on Core 1)
 @app.route('/consume_action', methods=['GET'])
 def get_action():
-    # Safely extract values across core spaces using process locks
     with shared_action.get_lock():
         action_to_send = shared_action.value
         shared_action.value = 0 
@@ -207,7 +197,6 @@ def get_action():
 if __name__ == '__main__':
     print("[DEBUG] [MAIN] Booting multi-core setup environment...")
     
-    # Initialize and spawn the hardware routine onto its own isolated OS process (Core 2)
     hardware_process = multiprocessing.Process(
         target=scanner_loop_process, 
         args=(shared_action,), 
@@ -216,6 +205,5 @@ if __name__ == '__main__':
     hardware_process.start()
     print(f"[DEBUG] [MAIN] Core 2 process successfully launched with PID: {hardware_process.pid}")
 
-    # Launch Flask on Core 1
     print("[DEBUG] [MAIN] Deploying API Service on Core 1...")
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
